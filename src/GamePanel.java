@@ -9,7 +9,7 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     private static final int WIDTH = 400;
     private static final int HEIGHT = 400;
 
-    private Arraylist<Point> snake;
+    private ArrayList<Point> snake;
     private Point food;
     private int dirX = 1, dirY = 0;
     private int nextDirX = 1, nextDirY = 0;
@@ -24,11 +24,11 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         addKeyListener(this);
 
         snake = new ArrayList<>();
-        snake.add(new Point(WIDTH / 2 / TITLE_SIZE, HEIGHT / 2 / TILE_SIZE));
+        snake.add(new Point(WIDTH / 2 / TILE_SIZE, HEIGHT / 2 / TILE_SIZE));
         random = new Random();
         spawnFood();
 
-        timer = new Timer(100, this);
+        timer = new Timer(200, this);
         timer.start();
     }
 
@@ -73,7 +73,7 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
 
         g.setColor(Color.GREEN);
         for (Point p : snake) {
-        g.fillRect(p.x * TITLE_SIZE, p.y * TITLE_SIZE, TILE_SIZE, TILE_SIZE);
+        g.fillRect(p.x * TILE_SIZE, p.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
         }
 
         g.setColor(Color.RED);
@@ -82,12 +82,54 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         if (gameOver) {
             g.setColor(Color.WHITE);
             g.setFont(new Font("Arial", Font.BOLD, 20));
-            g.drawString("Game Over" + (snake.size() - 1), 100, 200);
+            g.drawString("Game Over. Score: " + (snake.size() - 1), 100, 200);
+            g.drawString("Press 'R' to Restart", 100, 230);
         }
+    }
+
+    private void restartGame() {
+        snake.clear();
+        snake.add(new Point(WIDTH / 2 / TILE_SIZE, HEIGHT / 2 / TILE_SIZE));
+        dirX = 1;
+        dirY = 0;
+        nextDirX = 1;
+        nextDirY = 0;
+        gameOver = false;
+        spawnFood();
     }
 
     @Override
     public void keyPressed(KeyEvent e) {
+        if (gameOver) {
+            if (e.getKeyCode() == KeyEvent.VK_R) {
+                restartGame();
+            }
+            return;
+        }
 
+        switch (e.getKeyCode()) {
+            case KeyEvent.VK_UP:
+            case KeyEvent.VK_W:
+                if (dirY == 0) { nextDirX = 0; nextDirY = -1; }
+                break;
+            case KeyEvent.VK_DOWN:
+            case KeyEvent.VK_S:
+                if (dirY == 0) { nextDirX = 0; nextDirY = 1;}
+                break;
+            case KeyEvent.VK_LEFT:
+            case KeyEvent.VK_A:
+                if (dirX == 0) { nextDirX = -1; nextDirY = 0;}
+                break;
+            case KeyEvent.VK_RIGHT:
+            case KeyEvent.VK_D:
+                if (dirX == 0) { nextDirX = 1; nextDirY = 0;}
+                break;
+        }
     }
+
+    @Override
+    public void keyReleased(KeyEvent e) {}
+
+    @Override
+    public void keyTyped(KeyEvent e) {}
 }
