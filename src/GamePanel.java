@@ -1,8 +1,12 @@
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
+import java.io.File;
+import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Random;
+import java.util.Scanner;
 
 public class GamePanel extends JPanel implements ActionListener, KeyListener {
     private static final int TILE_SIZE = 20;
@@ -16,6 +20,8 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     private Timer timer;
     private boolean gameOver = false;
     private Random random;
+    private int score;
+    private int highScore;
 
     public GamePanel() {
         setPreferredSize(new Dimension(WIDTH, HEIGHT));
@@ -23,17 +29,89 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         setFocusable(true);
         addKeyListener(this);
 
-        snake = new ArrayList<>();
-        snake.add(new Point(WIDTH / 2 / TILE_SIZE, HEIGHT / 2 / TILE_SIZE));
-        random = new Random();
-        spawnFood();
+        loadHighScore();
+        initializeGame();
 
         timer = new Timer(200, this);
         timer.start();
     }
 
+    private void initializeGame() {
+        snake = new ArrayList<>();
+        snake.add(new Point(WIDTH / 2 / TILE_SIZE, HEIGHT / 2 / TILE_SIZE));
+        random = new Random();
+        spawnFood();
+        score = 0;
+        dirX = 1;
+        dirY = 0;
+        nextDirX = 1;
+        nextDirY = 0;
+        gameOver = false;
+    }
+
+    private void loadHighScore() {
+        try {
+            File file = new File("highscore.txt");
+            if (file.exists()) {
+                Scanner scanner = new Scanner(file);
+                if (scanner.hasNextInt()) {
+                    highScore = scanner.nextInt();
+                }
+                scanner.close();
+            } else {
+                highScore = 0;
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            highScore = 0;
+        }
+    }
+
+    private void saveHighScore() {
+        try {
+            PrintWriter writer = new PrintWriter("highscore.txt");
+            writer.println(highScore);
+            writer.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void checkGameOver() {
+        Point head = snake.get(0);
+        // Check for wall collision
+        if (head.x < 0 || head.x >= WIDTH / TILE_SIZE ||
+            head.y < 0 || head.y >= HEIGHT / TILE_SIZE) {
+            gameOver = true;
+        }
+
+        // Check for self collision
+        for (int i = 1; i < snake.size(); i++) {
+            if (head.equals(snake.get(i))) {
+                gameOver = true;
+                break;
+            }
+        }
+
+        if (gameOver) {
+            if (score > highScore) {
+                highScore = score;
+                saveHighScore();
+            }
+        }
+    }
+
     private void spawnFood() {
-        food = new Point(random.nextInt(WIDTH / TILE_SIZE), random.nextInt(HEIGHT / TILE_SIZE));
+        int cellsX = WIDTH / TITLE_SIZE;
+        int cellsY = HEIGHT / TITLE_SIZE;
+        Point p;
+        while (true) {
+            p = new Point(random.nextInt(cellsX), random.nextInt(cellsY));
+            if (!snake.contains(p)) {
+                break;
+            }
+        }
+        food = p;
     }
 
     @Override
@@ -45,24 +123,15 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
             Point head = snake.get(0);
             Point newHead = new Point(head.x + dirX, head.y + dirY);
 
-            if (newHead.x < 0 || newHead.x >= WIDTH / TILE_SIZE ||
-            newHead.y < 0 || newHead.y >= HEIGHT / TILE_SIZE) {
-                gameOver = true;
-            }
-
-            for (Point p : snake) {
-                if (newHead.equals(p)) {
-                    gameOver = true;
-                }
-            }
-
             snake.add(0, newHead);
 
             if (newHead.equals(food)) {
+                score++;
                 spawnFood();
             } else {
                 snake.remove(snake.size() - 1);
             }
+            checkGameOver();
         }
         repaint();
     }
@@ -71,31 +140,31 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
 
-        g.setColor(Color.GREEN);
-        for (Point p : snake) {
-        g.fillRect(p.x * TILE_SIZE, p.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-        }
+        if (!gameOver) {
+            g.setColor(Color.GREEN);
+            for (Point p : snake) {
+                g.fillRect(p.x * TILE_SIZE, p.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            }
 
-        g.setColor(Color.RED);
-        g.fillRect(food.x * TILE_SIZE, food.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            g.setColor(Color.RED);
+            g.fillRect(food.x * TILE_SIZE, food.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
 
-        if (gameOver) {
+            g.setColor(Color.WHITE);
+            g.setFont(new Font("Arial", Font.BOLD, 16));
+            g.drawString("Score: " + score, 10, 20);
+            g.drawString("High Score: " + highScore, WIDTH - 150, 20);
+        } else {
             g.setColor(Color.WHITE);
             g.setFont(new Font("Arial", Font.BOLD, 20));
-            g.drawString("Game Over. Score: " + (snake.size() - 1), 100, 200);
-            g.drawString("Press 'R' to Restart", 100, 230);
+            g.drawString("Game Over", 140, 150);
+            g.drawString("Your Score: " + score, 130, 180);
+            g.drawString("High Score: " + highScore, 130, 210);
+            g.drawString("Press 'R' to Restart", 110, 250);
         }
     }
 
     private void restartGame() {
-        snake.clear();
-        snake.add(new Point(WIDTH / 2 / TILE_SIZE, HEIGHT / 2 / TILE_SIZE));
-        dirX = 1;
-        dirY = 0;
-        nextDirX = 1;
-        nextDirY = 0;
-        gameOver = false;
-        spawnFood();
+        initializeGame();
     }
 
     @Override
