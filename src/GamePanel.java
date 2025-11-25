@@ -18,7 +18,8 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     private int dirX = 1, dirY = 0;
     private int nextDirX = 1, nextDirY = 0;
     private Timer timer;
-    private boolean gameOver = false;
+    private enum State = { MENU, RUNNING, PAUSED, GAME_OVER }
+    private State state = State.MENU;
     private Random random;
     private int score;
     private int highScore;
@@ -46,7 +47,7 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         dirY = 0;
         nextDirX = 1;
         nextDirY = 0;
-        gameOver = false;
+        state = State.MENU;
     }
 
     private void loadHighScore() {
@@ -79,21 +80,19 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
 
     private void checkGameOver() {
         Point head = snake.get(0);
-        // Check for wall collision
         if (head.x < 0 || head.x >= WIDTH / TILE_SIZE ||
-            head.y < 0 || head.y >= HEIGHT / TILE_SIZE) {
-            gameOver = true;
+        head.y < 0 || head.y >= HEIGHT / TILE_SIZE) {
+            state = State.GAME_OVER;
         }
 
-        // Check for self collision
         for (int i = 1; i < snake.size(); i++) {
             if (head.equals(snake.get(i))) {
-                gameOver = true;
+                state = State.GAME_OVER;
                 break;
             }
         }
 
-        if (gameOver) {
+        if (state == State.GAME_OVER) {
             if (score > highScore) {
                 highScore = score;
                 saveHighScore();
@@ -116,7 +115,7 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
 
     @Override
     public void actionPerformed(ActionEvent e) {
-        if (!gameOver) {
+        if (state == State.RUNNING) {
             dirX = nextDirX;
             dirY = nextDirY;
 
@@ -140,27 +139,32 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
 
-        if (!gameOver) {
-            g.setColor(Color.GREEN);
-            for (Point p : snake) {
-                g.fillRect(p.x * TILE_SIZE, p.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-            }
-
-            g.setColor(Color.RED);
-            g.fillRect(food.x * TILE_SIZE, food.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-
-            g.setColor(Color.WHITE);
-            g.setFont(new Font("Arial", Font.BOLD, 16));
-            g.drawString("Score: " + score, 10, 20);
-            g.drawString("High Score: " + highScore, WIDTH - 150, 20);
-        } else {
-            g.setColor(Color.WHITE);
-            g.setFont(new Font("Arial", Font.BOLD, 20));
-            g.drawString("Game Over", 140, 150);
-            g.drawString("Your Score: " + score, 130, 180);
-            g.drawString("High Score: " + highScore, 130, 210);
-            g.drawString("Press 'R' to Restart", 110, 250);
+        switch (state) {
+            case MENU -> drawMenu(g);
+            case RUNNING, PAUSED -> drawGame(g);
+            case GAME_OVER -> drawGameOver(g);
         }
+    }
+
+    private void drawMenu(Graphics g) {
+        g.setColor(Color.DARK_GRAY);
+        g.fillRect(0, 0, WIDTH, HEIGHT);
+
+        g.setColor(Color.WHITE);
+        g.setFont(new Font("Arial", Font.BOLD, 26));
+        g.drawString("SNAKE", 150, 130);
+
+        g.setFont(new Font("Arial", Font.PLAIN, 16));
+        g.drawString("Press SPACE to start", 80, 180);
+        g.drawString("Controls: WASD", 70, 210);
+        g.drawString("R - restart", 60, 240);
+
+        g.setFont(new Font("Arial", Font.PLAIN, 14));
+        g.drawString("Лучший счёт: " + highScore, 10, HEIGHT - 20);
+    }
+
+    private void drawGame(Graphics g) {
+
     }
 
     private void restartGame() {
