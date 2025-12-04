@@ -39,6 +39,25 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     private int score;
     private int highScore;
 
+    // === НОВЫЕ ФУНКЦИИ ===
+
+    // Бонусная еда
+    private Point bonusFood = null;
+    private int bonusFoodTimer = 0;
+    private static final int BONUS_FOOD_DURATION = 50; // тиков
+    private static final int BONUS_FOOD_CHANCE = 10; // шанс появления (1 из 10)
+    private static final int BONUS_FOOD_POINTS = 5;
+
+    // Режим без стен
+    private boolean noWallsMode = false;
+
+    // Анимация поедания
+    private int eatAnimationTimer = 0;
+    private Point lastEatPosition = null;
+
+    // Эффекты
+    private boolean soundEnabled = true;
+
     public GamePanel() {
         setPreferredSize(new Dimension(WIDTH, HEIGHT));
         setBackground(Color.BLACK);
@@ -79,11 +98,15 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
             random = new Random();
         }
         spawnFood();
+        bonusFood = null;
+        bonusFoodTimer = 0;
         score = 0;
         dirX = 1;
         dirY = 0;
         nextDirX = 1;
         nextDirY = 0;
+        eatAnimationTimer = 0;
+        lastEatPosition = null;
         // при старте игры будем показывать меню
         state = State.MENU;
         // сбрасываем базовую скорость в соответствии с выбранным режимом
@@ -118,16 +141,29 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         }
     }
 
+    private void playSound() {
+        if (soundEnabled) {
+            Toolkit.getDefaultToolkit().beep();
+        }
+    }
+
     private void checkGameOver() {
         Point head = snake.get(0);
-        if (head.x < 0 || head.x >= WIDTH / TILE_SIZE ||
-                head.y < 0 || head.y >= HEIGHT / TILE_SIZE) {
-            state = State.GAME_OVER;
+
+        // Проверка столкновения со стенами (только если режим без стен выключен)
+        if (!noWallsMode) {
+            if (head.x < 0 || head.x >= WIDTH / TILE_SIZE ||
+                    head.y < 0 || head.y >= HEIGHT / TILE_SIZE) {
+                state = State.GAME_OVER;
+                playSound();
+            }
         }
 
+        // Проверка столкновения с собой
         for (int i = 1; i < snake.size(); i++) {
             if (head.equals(snake.get(i))) {
                 state = State.GAME_OVER;
+                playSound();
                 break;
             }
         }
@@ -146,11 +182,29 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         Point p;
         while (true) {
             p = new Point(random.nextInt(cellsX), random.nextInt(cellsY));
-            if (!snake.contains(p)) {
+            if (!snake.contains(p) && (bonusFood == null || !p.equals(bonusFood))) {
                 break;
             }
         }
         food = p;
+    }
+
+    private void spawnBonusFood() {
+        if (bonusFood != null) return;
+
+        int cellsX = WIDTH / TILE_SIZE;
+        int cellsY = HEIGHT / TILE_SIZE;
+        Point p;
+        int attempts = 0;
+        while (attempts < 100) {
+            p = new Point(random.nextInt(cellsX), random.nextInt(cellsY));
+            if (!snake.contains(p) && !p.equals(food)) {
+                bonusFood = p;
+                bonusFoodTimer = BONUS_FOOD_DURATION;
+                return;
+            }
+            attempts++;
+        }
     }
 
     @Override
@@ -163,11 +217,33 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
             Point head = snake.get(0);
             Point newHead = new Point(head.x + dirX, head.y + dirY);
 
+            // Режим без стен - телепортация на другую сторону
+            if (noWallsMode) {
+                int cellsX = WIDTH / TILE_SIZE;
+                int cellsY = HEIGHT / TILE_SIZE;
+                if (newHead.x < 0) newHead.x = cellsX - 1;
+                if (newHead.x >= cellsX) newHead.x = 0;
+                if (newHead.y < 0) newHead.y = cellsY - 1;
+                if (newHead.y >= cellsY) newHead.y = 0;
+            }
+
             snake.add(0, newHead);
 
+            boolean ate = false;
+
+            // Проверка обычной еды
             if (newHead.equals(food)) {
                 score++;
+                ate = true;
+                lastEatPosition = new Point(food);
+                eatAnimationTimer = 5;
+                playSound();
                 spawnFood();
+
+                // Шанс появления бонусной еды
+                if (random.nextInt(BONUS_FOOD_CHANCE) == 0) {
+                    spawnBonusFood();
+                }
 
                 // лёгкое ускорение: каждые 5 очков уменьшаем задержку на 10 мс от базовой скорости
                 int newDelay = baseSpeed - (score / 5) * 10;
@@ -178,9 +254,36 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
                     currentDelay = newDelay;
                     timer.setDelay(currentDelay);
                 }
-            } else {
+            }
+
+            // Проверка бонусной еды
+            if (bonusFood != null && newHead.equals(bonusFood)) {
+                score += BONUS_FOOD_POINTS;
+                ate = true;
+                lastEatPosition = new Point(bonusFood);
+                eatAnimationTimer = 8;
+                playSound();
+                bonusFood = null;
+                bonusFoodTimer = 0;
+            }
+
+            if (!ate) {
                 snake.remove(snake.size() - 1);
             }
+
+            // Таймер бонусной еды
+            if (bonusFoodTimer > 0) {
+                bonusFoodTimer--;
+                if (bonusFoodTimer == 0) {
+                    bonusFood = null;
+                }
+            }
+
+            // Анимация
+            if (eatAnimationTimer > 0) {
+                eatAnimationTimer--;
+            }
+
             checkGameOver();
         }
         repaint();
@@ -205,52 +308,66 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     }
 
     private void drawMenu(Graphics g) {
-        g.setColor(Color.DARK_GRAY);
-        g.fillRect(0, 0, WIDTH, HEIGHT);
+        // Градиентный фон
+        Graphics2D g2d = (Graphics2D) g;
+        GradientPaint gradient = new GradientPaint(0, 0, new Color(20, 20, 40),
+                                                    WIDTH, HEIGHT, new Color(40, 40, 60));
+        g2d.setPaint(gradient);
+        g2d.fillRect(0, 0, WIDTH, HEIGHT);
+
+        g.setColor(Color.GREEN);
+        g.setFont(new Font("Arial", Font.BOLD, 32));
+        g.drawString("🐍 SNAKE", 120, 70);
 
         g.setColor(Color.WHITE);
-        g.setFont(new Font("Arial", Font.BOLD, 26));
-        g.drawString("SNAKE", 150, 80);
-
-        g.setFont(new Font("Arial", Font.PLAIN, 16));
-        g.drawString("Нажмите ПРОБЕЛ, чтобы начать", 40, 130);
-        g.drawString("Управление: WASD или стрелки", 40, 160);
-        g.drawString("R - перезапуск после смерти", 40, 190);
+        g.setFont(new Font("Arial", Font.PLAIN, 14));
+        g.drawString("Нажмите ПРОБЕЛ, чтобы начать", 80, 110);
+        g.drawString("Управление: WASD или стрелки", 80, 130);
 
         // меню выбора скорости
-        g.setFont(new Font("Arial", Font.BOLD, 16));
-        g.drawString("Скорость:", 40, 240);
+        g.setFont(new Font("Arial", Font.BOLD, 14));
+        g.drawString("Скорость:", 40, 170);
 
-        g.setFont(new Font("Arial", Font.PLAIN, 14));
-        // варианты: 0 - медленно, 1 - нормально, 2 - быстро
-        String slowLabel = "1) Медленно";
-        String normalLabel = "2) Нормально";
-        String fastLabel = "3) Быстро";
-
-        // подсветка выбранного режима
+        g.setFont(new Font("Arial", Font.PLAIN, 13));
         g.setColor(speedMode == 0 ? Color.YELLOW : Color.WHITE);
-        g.drawString(slowLabel, 60, 270);
+        g.drawString("1) Медленно", 60, 190);
         g.setColor(speedMode == 1 ? Color.YELLOW : Color.WHITE);
-        g.drawString(normalLabel, 60, 295);
+        g.drawString("2) Нормально", 60, 210);
         g.setColor(speedMode == 2 ? Color.YELLOW : Color.WHITE);
-        g.drawString(fastLabel, 60, 320);
+        g.drawString("3) Быстро", 60, 230);
+
+        // Режим без стен
+        g.setFont(new Font("Arial", Font.BOLD, 14));
+        g.setColor(Color.WHITE);
+        g.drawString("Режимы:", 40, 265);
+
+        g.setFont(new Font("Arial", Font.PLAIN, 13));
+        g.setColor(noWallsMode ? Color.CYAN : Color.GRAY);
+        g.drawString("N) Без стен: " + (noWallsMode ? "ВКЛ" : "ВЫКЛ"), 60, 285);
+
+        g.setColor(soundEnabled ? Color.CYAN : Color.GRAY);
+        g.drawString("M) Звук: " + (soundEnabled ? "ВКЛ" : "ВЫКЛ"), 60, 305);
+
+        // Рекорд
+        g.setColor(Color.YELLOW);
+        g.setFont(new Font("Arial", Font.BOLD, 16));
+        g.drawString("🏆 Лучший счёт: " + highScore, 120, 350);
 
         g.setColor(Color.LIGHT_GRAY);
-        g.setFont(new Font("Arial", Font.PLAIN, 12));
-        g.drawString("Меняйте скорость стрелками ВВЕРХ/ВНИЗ или клавишами 1/2/3", 20, HEIGHT - 20);
-
-        g.setColor(Color.WHITE);
-        g.setFont(new Font("Arial", Font.PLAIN, 14));
-        g.drawString("Лучший счёт: " + highScore, 10, 20);
+        g.setFont(new Font("Arial", Font.PLAIN, 11));
+        g.drawString("Стрелки ↑↓ или 1/2/3 - скорость | N - стены | M - звук", 20, HEIGHT - 10);
     }
 
     private void drawGame(Graphics g) {
+        Graphics2D g2d = (Graphics2D) g;
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
         // фон
         g.setColor(Color.BLACK);
         g.fillRect(0, 0, WIDTH, HEIGHT);
 
         // лёгкая сетка
-        g.setColor(new Color(40, 40, 40));
+        g.setColor(new Color(30, 30, 30));
         for (int x = 0; x < WIDTH; x += TILE_SIZE) {
             g.drawLine(x, 0, x, HEIGHT);
         }
@@ -258,36 +375,95 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
             g.drawLine(0, y, WIDTH, y);
         }
 
-        // еда
+        // Обычная еда
         g.setColor(Color.RED);
-        g.fillOval(food.x * TILE_SIZE, food.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        g.fillOval(food.x * TILE_SIZE + 2, food.y * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4);
 
-        // змея
+        // Бонусная еда (мигает)
+        if (bonusFood != null) {
+            if (bonusFoodTimer % 4 < 2) { // мигание
+                g.setColor(Color.YELLOW);
+            } else {
+                g.setColor(Color.ORANGE);
+            }
+            g.fillOval(bonusFood.x * TILE_SIZE + 1, bonusFood.y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+
+            // Показать оставшееся время
+            g.setColor(Color.WHITE);
+            g.setFont(new Font("Arial", Font.PLAIN, 10));
+            g.drawString("+" + BONUS_FOOD_POINTS, bonusFood.x * TILE_SIZE, bonusFood.y * TILE_SIZE - 2);
+        }
+
+        // Анимация поедания
+        if (eatAnimationTimer > 0 && lastEatPosition != null) {
+            int size = eatAnimationTimer * 4;
+            g.setColor(new Color(255, 255, 0, 100));
+            g.fillOval(lastEatPosition.x * TILE_SIZE + TILE_SIZE/2 - size/2,
+                       lastEatPosition.y * TILE_SIZE + TILE_SIZE/2 - size/2, size, size);
+        }
+
+        // Градиентная змея
         for (int i = 0; i < snake.size(); i++) {
             Point p = snake.get(i);
+
+            // Градиент от головы к хвосту
+            float ratio = (float) i / Math.max(snake.size(), 1);
+            int green = (int) (200 - ratio * 100);
+            int blue = (int) (ratio * 50);
+
             if (i == 0) {
-                // голова
-                g.setColor(new Color(0, 200, 0));
+                // Голова - ярче
+                g2d.setColor(new Color(50, 255, 50));
+                g2d.fillRoundRect(p.x * TILE_SIZE + 1, p.y * TILE_SIZE + 1,
+                                  TILE_SIZE - 2, TILE_SIZE - 2, 6, 6);
+
+                // Глаза
+                g.setColor(Color.BLACK);
+                int eyeSize = 4;
+                if (dirX == 1) { // вправо
+                    g.fillOval(p.x * TILE_SIZE + 12, p.y * TILE_SIZE + 4, eyeSize, eyeSize);
+                    g.fillOval(p.x * TILE_SIZE + 12, p.y * TILE_SIZE + 12, eyeSize, eyeSize);
+                } else if (dirX == -1) { // влево
+                    g.fillOval(p.x * TILE_SIZE + 4, p.y * TILE_SIZE + 4, eyeSize, eyeSize);
+                    g.fillOval(p.x * TILE_SIZE + 4, p.y * TILE_SIZE + 12, eyeSize, eyeSize);
+                } else if (dirY == -1) { // вверх
+                    g.fillOval(p.x * TILE_SIZE + 4, p.y * TILE_SIZE + 4, eyeSize, eyeSize);
+                    g.fillOval(p.x * TILE_SIZE + 12, p.y * TILE_SIZE + 4, eyeSize, eyeSize);
+                } else { // вниз
+                    g.fillOval(p.x * TILE_SIZE + 4, p.y * TILE_SIZE + 12, eyeSize, eyeSize);
+                    g.fillOval(p.x * TILE_SIZE + 12, p.y * TILE_SIZE + 12, eyeSize, eyeSize);
+                }
             } else {
-                // тело
-                g.setColor(new Color(0, 120, 0));
+                // Тело с градиентом
+                g2d.setColor(new Color(0, green, blue));
+                g2d.fillRoundRect(p.x * TILE_SIZE + 2, p.y * TILE_SIZE + 2,
+                                  TILE_SIZE - 4, TILE_SIZE - 4, 4, 4);
             }
-            g.fillRect(p.x * TILE_SIZE, p.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        }
+
+        // Индикатор режима без стен
+        if (noWallsMode) {
+            g.setColor(new Color(0, 255, 255, 100));
+            g.drawRect(0, 0, WIDTH - 1, HEIGHT - 1);
+            g.drawRect(1, 1, WIDTH - 3, HEIGHT - 3);
         }
 
         // текущий счёт и рекорд сверху
         g.setColor(Color.WHITE);
-        g.setFont(new Font("Arial", Font.PLAIN, 14));
+        g.setFont(new Font("Arial", Font.BOLD, 14));
         g.drawString("Счёт: " + score, 10, 20);
-        g.drawString("Рекорд: " + highScore, WIDTH - 120, 20);
-
-        // подсказки управления снизу
-        g.setFont(new Font("Arial", Font.PLAIN, 12));
-        g.drawString("Управление: WASD / стрелки   |   Пауза: P или ESC   |   Рестарт: R", 10, HEIGHT - 10);
+        g.drawString("Рекорд: " + highScore, WIDTH - 100, 20);
 
         if (state == State.PAUSED) {
-            g.setFont(new Font("Arial", Font.BOLD, 24));
-            g.drawString("ПАУЗА", WIDTH / 2 - 50, HEIGHT / 2);
+            g.setColor(new Color(0, 0, 0, 150));
+            g.fillRect(0, 0, WIDTH, HEIGHT);
+
+            g.setColor(Color.WHITE);
+            g.setFont(new Font("Arial", Font.BOLD, 28));
+            g.drawString("⏸ ПАУЗА", WIDTH / 2 - 70, HEIGHT / 2 - 20);
+
+            g.setFont(new Font("Arial", Font.PLAIN, 14));
+            g.drawString("P или ESC - продолжить", WIDTH / 2 - 80, HEIGHT / 2 + 20);
         }
     }
 
@@ -296,18 +472,29 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         drawGame(g);
 
         // затем поверх затемнение и текст
-        g.setColor(new Color(0, 0, 0, 150));
+        g.setColor(new Color(0, 0, 0, 180));
         g.fillRect(0, 0, WIDTH, HEIGHT);
 
-        g.setColor(Color.WHITE);
-        g.setFont(new Font("Arial", Font.BOLD, 24));
-        g.drawString("ИГРА ОКОНЧЕНА", 80, 150);
+        g.setColor(Color.RED);
+        g.setFont(new Font("Arial", Font.BOLD, 28));
+        g.drawString("💀 ИГРА ОКОНЧЕНА", 60, 140);
 
-        g.setFont(new Font("Arial", Font.PLAIN, 16));
-        g.drawString("Ваш счёт: " + score, 130, 190);
-        g.drawString("Рекорд: " + highScore, 130, 220);
-        g.drawString("Нажмите R, чтобы начать заново", 60, 260);
-        g.drawString("Нажмите ПРОБЕЛ для меню", 80, 290);
+        g.setColor(Color.WHITE);
+        g.setFont(new Font("Arial", Font.PLAIN, 18));
+        g.drawString("Ваш счёт: " + score, 140, 190);
+
+        if (score >= highScore && score > 0) {
+            g.setColor(Color.YELLOW);
+            g.drawString("🎉 НОВЫЙ РЕКОРД!", 120, 220);
+        } else {
+            g.setColor(Color.GRAY);
+            g.drawString("Рекорд: " + highScore, 140, 220);
+        }
+
+        g.setColor(Color.WHITE);
+        g.setFont(new Font("Arial", Font.PLAIN, 14));
+        g.drawString("R - играть снова", 140, 270);
+        g.drawString("ПРОБЕЛ - в меню", 140, 295);
     }
 
     private void restartGame() {
@@ -351,6 +538,17 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
                 speedMode = 2;
                 applySpeedMode();
             }
+
+            // Переключение режима без стен
+            if (key == KeyEvent.VK_N) {
+                noWallsMode = !noWallsMode;
+            }
+
+            // Переключение звука
+            if (key == KeyEvent.VK_M) {
+                soundEnabled = !soundEnabled;
+            }
+
             return;
         }
 
@@ -400,8 +598,8 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     }
 
     @Override
-    public void keyReleased(KeyEvent e) { }
+    public void keyReleased(KeyEvent e) {}
 
     @Override
-    public void keyTyped(KeyEvent e) { }
+    public void keyTyped(KeyEvent e) {}
 }
