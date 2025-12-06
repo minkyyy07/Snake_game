@@ -14,14 +14,12 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     private static final int WIDTH = 400;
     private static final int HEIGHT = 400;
 
-    // базовые скорости для режимов (мс на тик)
     private static final int SPEED_SLOW = 260;
     private static final int SPEED_NORMAL = 200;
     private static final int SPEED_FAST = 140;
 
     private static final int MIN_GAME_SPEED = 80; // минимальная скорость при ускорении
 
-    // выбранный режим скорости: 0 - медленно, 1 - нормально, 2 - быстро
     private int speedMode = 1;
     private int baseSpeed = SPEED_NORMAL;
     private int currentDelay = baseSpeed;
@@ -39,24 +37,25 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     private int score;
     private int highScore;
 
-    // === НОВЫЕ ФУНКЦИИ ===
-
-    // Бонусная еда
     private Point bonusFood = null;
     private int bonusFoodTimer = 0;
     private static final int BONUS_FOOD_DURATION = 50; // тиков
     private static final int BONUS_FOOD_CHANCE = 10; // шанс появления (1 из 10)
     private static final int BONUS_FOOD_POINTS = 5;
 
-    // Режим без стен
     private boolean noWallsMode = false;
 
-    // Анимация поедания
     private int eatAnimationTimer = 0;
     private Point lastEatPosition = null;
 
-    // Эффекты
     private boolean soundEnabled = true;
+
+    private int bonusX, bonusY;
+    private int diamondX, diamondY;
+    private int speedUpX, speedUpY;
+    private int slowDownX, slowDownY;
+
+
 
     public GamePanel() {
         setPreferredSize(new Dimension(WIDTH, HEIGHT));
